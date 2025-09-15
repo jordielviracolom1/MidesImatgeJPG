@@ -11,7 +11,6 @@ public class MidesImatgeJPG
         FileInputStream fis; // per accedir el contingut de l'arxiu
         int pos; // posició del darrer caràcter . en el nom de l'arxiu
         String extensio; // extensió de l'arxiu
-        int b; // un byte llegit de l'arxiu (guardat dins d'un enter)
         
         // comprovo que l'usuari hagi proporcionat un paràmetre
         //
@@ -25,7 +24,6 @@ public class MidesImatgeJPG
         // comprovo que el paràmetre sigui el nom d'un arxiu existent
         //
         f = new File(args[0]);
-
         if (!f.exists() || !f.isFile())
         {
             System.out.println("L'arxiu que ha indicat no existeix");
@@ -65,34 +63,80 @@ public class MidesImatgeJPG
         {
             if (fis.read() != 0xFF || fis.read() != 0xD8)
             {
-                System.out.println("L'arxiu no és un arxiu d'imatge JPG");
-                try
+                throw new IOException("No és un fitxer JPEG vàlid (falta el marcador SOI).");
+            }
+
+            while (true)
+            {
+                int markerPrefix = fis.read();
+                if (markerPrefix != 0xFF)
                 {
-                    fis.close();
+                    throw new IOException("Error en el format: s’esperava marcador FF.");
                 }
-                catch (IOException ex1)
+
+                int marker = fis.read();
+                if (marker == -1)
                 {
-                    System.out.println("Ha passat un error tancant l'arxiu: " + ex1);
-                    return;
+                    throw new IOException("Final inesperat de fitxer.");
                 }
-                return;
+
+                // Segments que no porten longitud (com SOI, EOI, RSTx...)
+                //
+                if (marker == 0xD9)
+                {   
+                    //
+                    // EOI End Of Image
+                    //
+                    throw new IOException("No s’ha trobat cap segment SOF.");
+                }
+
+                // Llegim longitud del segment
+                //
+                int lenHi = fis.read();
+                int lenLo = fis.read();
+                int segmentLength = (lenHi << 8) + lenLo;
+
+                if (segmentLength < 2)
+                {
+                    throw new IOException("Longitud de segment invàlida.");
+                }
+
+                // Verifiquem si és un SOF (Start Of Frame)
+                //
+                if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2)
+                {
+                    fis.read(); // precisió (normalment 8)
+                    int heightHi = fis.read();
+                    int heightLo = fis.read();
+                    int height = (heightHi << 8) + heightLo;
+
+                    int widthHi = fis.read();
+                    int widthLo = fis.read();
+                    int width = (widthHi << 8) + widthLo;
+
+                    System.out.printf("Dimensions: %d x %d píxels%n", width, height);
+                    break;
+                }
+                else
+                {
+                    // Saltar la resta del segment
+                    fis.skip(segmentLength - 2);
+                }
             }
         }
-        catch (IOException ex)
+        catch (IOException e) 
         {
-            System.out.println("Ha passat un error llegint l'arxiu: " + ex);
-            try
-            {
-                fis.close();
-            }
-            catch (IOException ex1)
-            {
-                System.out.println("Ha passat un error tancant l'arxiu: " + ex1);
-                return;
-            }
-            return;
+            System.err.println("Error: " + e.getMessage());
+        }
+        finally
+        {
+            tancarArxiu(fis);
         }
 
+    }
+
+    private static void tancarArxiu(FileInputStream fis)
+    {
         try
         {
             fis.close();
@@ -102,6 +146,5 @@ public class MidesImatgeJPG
             System.out.println("Ha passat un error tancant l'arxiu: " + ex);
             return;
         }
-
     }
 }
