@@ -1,1 +1,1 @@
-"# MidesImatgeJPG" 
+# MidesImatgeJPG
